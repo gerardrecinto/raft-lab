@@ -1,0 +1,1 @@
+[{"name":"election","title":"Cold start election"},{"name":"leader-crash","title":"Leader crash and recovery"},{"name":"partition","title":"Minority partition cannot commit"},{"name":"chaos","title":"Random faults, invariants checked"}]

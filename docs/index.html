@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>raft-lab</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#f7f7f5;--fg:#1c1c1a;--mut:#6b6b66;--card:#fff;--line:#dcdcd6;--f:#8a8a84;--c:#d98e04;--l:#1b7f4b;--dead:#c9c9c4;--vote:#3b6fd4;--app:#1b7f4b;--drop:#c23b3b}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--fg:#ecece8;--mut:#9a9a94;--card:#1d1d1b;--line:#333330;--f:#7d7d78;--c:#e5a824;--l:#3fb97a;--dead:#44443f;--vote:#6d9bf0;--app:#3fb97a;--drop:#e06666}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 8px}
+p{margin:6px 0}.mut{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.row{display:flex;gap:14px;flex-wrap:wrap}.row>*{flex:1 1 320px}
+canvas{width:100%;height:auto;display:block;background:var(--card);border:1px solid var(--line);border-radius:10px}
+select,button,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer}input[type=range]{width:100%;padding:0}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+#log{height:300px;overflow:auto;font:12.5px/1.45 ui-monospace,Menlo,monospace}
+#log div{padding:1px 0;border-bottom:1px dashed var(--line)}
+.legend span{display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:13px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}
+a{color:var(--vote)}code{font:13px ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
+<main>
+<h1>raft-lab</h1>
+<p class="mut">A from-scratch Raft implementation in Go on a deterministic virtual clock. Every frame below replays a trace recorded by the real code in <code>cmd/raftsim</code>, nothing is hand-animated. Personal learning project, not a production system.</p>
+
+<div class="ctl">
+  <label>Scenario <select id="sc"></select></label>
+  <button id="play">Pause</button>
+  <label>Speed <select id="spd"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
+  <span id="clock" class="mut"></span>
+</div>
+<p id="blurb"></p>
+<input id="seek" type="range" min="0" max="1000" value="0" aria-label="timeline">
+
+<div class="row" style="margin-top:12px">
+  <canvas id="cv" width="560" height="440"></canvas>
+  <div class="card"><div id="log" aria-live="off"></div></div>
+</div>
+<div class="legend" style="margin-top:10px">
+  <span><i class="dot" style="background:var(--f)"></i>follower</span>
+  <span><i class="dot" style="background:var(--c)"></i>candidate</span>
+  <span><i class="dot" style="background:var(--l)"></i>leader</span>
+  <span><i class="dot" style="background:var(--dead)"></i>crashed</span>
+  <span><i class="dot" style="background:var(--vote)"></i>vote message</span>
+  <span><i class="dot" style="background:var(--app)"></i>append message</span>
+  <span><i class="dot" style="background:var(--drop)"></i>dropped by network or partition</span>
+</div>
+
+<h2>This run</h2>
+<div class="card"><table id="sum"></table></div>
+
+<h2>What is implemented</h2>
+<div class="card">
+<p><b>Implemented:</b> leader election with randomized timeouts, log replication, the commit rule that only counts replicas for current-term entries, fast log backtracking, a leader no-op on election, and durable term, vote and log that survive a crash.</p>
+<p><b>Not implemented:</b> snapshots and log compaction, membership changes, read-only queries, a real network or disk.</p>
+<p><b>How it is checked:</b> after every simulated millisecond the simulator verifies election safety, log matching, state machine safety and leader completeness. 150 seeded chaos runs plus 60 heal-and-converge runs pass. A second test removes the vote-time log check and requires the checker to catch the resulting lost committed entry, so the checker is shown to fail when the protocol is broken.</p>
+</div>
+
+<h2>References</h2>
+<div class="card">
+<ul>
+<li>Ongaro and Ousterhout, <a href="https://raft.github.io/raft.pdf">In Search of an Understandable Consensus Algorithm</a> (the Raft paper, figures 2 and 3 are the spec used here).</li>
+<li>Ongaro, <a href="https://web.stanford.edu/~ouster/cgi-bin/papers/OngaroPhD.pdf">Consensus: Bridging Theory and Practice</a> (PhD thesis, source for the log backtracking optimization and the leader no-op).</li>
+<li><a href="https://raft.github.io/">raft.github.io</a>, the official Raft site and visualization.</li>
+<li><a href="https://etcd.io/docs/latest/learning/design-learner/">etcd documentation</a>, a production Raft system.</li>
+<li><a href="https://kafka.apache.org/documentation/#replication">Apache Kafka replication</a>, for the contrast between quorum consensus and in-sync-replica replication.</li>
+</ul>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+let T=null,now=0,playing=true,last=0;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+async function load(name){
+  T=await (await fetch('traces/'+name+'.json')).json();
+  now=0;$('blurb').textContent=T.blurb;
+  const s=T.summary;
+  $('sum').innerHTML=[['Simulated time',T.endT+' ms'],['Leader changes',s.leaderChanges],['Highest term',s.maxTerm],['Committed entries (incl. leader no-ops)',s.committedEntries],['Messages / dropped',s.messages+' / '+s.dropped],['Safety violations',s.violations||'none'],['Seed',T.seed]].map(r=>'<tr><th>'+r[0]+'</th><td>'+r[1]+'</td></tr>').join('');
+  $('log').innerHTML='';logged=0;
+}
+let logged=0;
+function stateAt(t){
+  const n=T.nodes,st=[];for(let i=0;i<n;i++)st.push({role:'follower',term:0,commit:0,up:true});
+  const lines=[];
+  for(const e of T.events){ if(e.t>t)break;
+    if(e.kind==='role'){st[e.node].role=e.role;st[e.node].term=e.term}
+    else if(e.kind==='commit'){st[e.node].commit=e.commit}
+    else if(e.kind==='crash'){st[e.node].up=false}
+    else if(e.kind==='restart'){st[e.node]={role:'follower',term:st[e.node].term,commit:0,up:true}}
+    else if(e.kind==='partition'){window.__part=e.text}else if(e.kind==='heal'){window.__part=null}
+    lines.push(e);
+  }
+  return {st,lines};
+}
+function describe(e){
+  const t=(e.t+'').padStart(5,' ')+'ms ';
+  switch(e.kind){
+    case 'role':return t+'node '+e.node+' is '+e.role+' (term '+e.term+')';
+    case 'commit':return t+'node '+e.node+' commit index '+e.commit;
+    case 'propose':return t+'leader '+e.node+' appended index '+e.index+' "'+e.text+'"';
+    case 'crash':return t+'node '+e.node+' crashed';
+    case 'restart':return t+'node '+e.node+' restarted from saved log';
+    case 'partition':return t+'partition '+e.text;
+    case 'heal':return t+'network healed';
+    default:return t+e.text}
+}
+function draw(){
+  const w=cv.width,h=cv.height,cx=w/2,cy=h/2,R=Math.min(w,h)/2-70;
+  ctx.clearRect(0,0,w,h);
+  const {st,lines}=stateAt(now);
+  const pos=st.map((_,i)=>{const a=-Math.PI/2+i*2*Math.PI/st.length;return [cx+R*Math.cos(a),cy+R*Math.sin(a)]});
+  // messages in flight
+  for(const m of T.msgs){
+    if(m.t>now||m.deliver<now-120)continue;
+    const p=Math.min(1,(now-m.t)/(m.deliver-m.t));
+    const a=pos[m.from],b=pos[m.to];
+    let f=p; if(m.dropped)f=Math.min(p,0.5);
+    const x=a[0]+(b[0]-a[0])*f,y=a[1]+(b[1]-a[1])*f;
+    ctx.globalAlpha=m.dropped&&p>0.5?Math.max(0,1-(p-0.5)*2):(p>=1?Math.max(0,1-(now-m.deliver)/120):1);
+    ctx.fillStyle=m.dropped?css('--drop'):(m.kind.startsWith('vote')?css('--vote'):css('--app'));
+    ctx.beginPath();ctx.arc(x,y,m.kind==='append'?3:4,0,7);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  const col={follower:css('--f'),candidate:css('--c'),leader:css('--l')};
+  st.forEach((s,i)=>{
+    const [x,y]=pos[i];
+    ctx.beginPath();ctx.arc(x,y,30,0,7);
+    ctx.fillStyle=s.up?col[s.role]:css('--dead');ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='600 15px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(s.up?String(i):'x',x,y-2);
+    ctx.fillStyle=css('--fg');ctx.font='12px system-ui';
+    ctx.fillText(s.up?('term '+s.term+' | commit '+s.commit):'crashed',x,y+(y<cy?-46:46));
+  });
+  ctx.fillStyle=css('--mut');ctx.font='12px system-ui';ctx.textAlign='left';
+  ctx.fillText(window.__part?('partition: '+window.__part):'network: all nodes connected',10,h-12);
+  $('clock').textContent='t = '+Math.round(now)+' ms / '+T.endT+' ms';
+  $('seek').value=Math.round(1000*now/T.endT);
+  if(lines.length!==logged){
+    const L=$('log');
+    if(lines.length<logged){L.innerHTML='';logged=0}
+    for(let i=logged;i<lines.length;i++){const d=document.createElement('div');d.textContent=describe(lines[i]);L.appendChild(d)}
+    logged=lines.length;L.scrollTop=L.scrollHeight;
+  }
+}
+function frame(ts){
+  if(T){ if(playing){const dt=last?ts-last:0;now+=dt*parseFloat($('spd').value)*0.5; if(now>=T.endT){now=T.endT;playing=false;$('play').textContent='Replay'}} draw()}
+  last=ts;requestAnimationFrame(frame)
+}
+$('play').onclick=()=>{ if(now>=T.endT){now=0;logged=0;$('log').innerHTML=''} playing=!playing;$('play').textContent=playing?'Pause':'Play'};
+$('seek').oninput=e=>{now=T.endT*e.target.value/1000;playing=false;$('play').textContent='Play'};
+$('sc').onchange=e=>load(e.target.value).then(()=>{playing=true;$('play').textContent='Pause'});
+fetch('traces/index.json').then(r=>r.json()).then(ix=>{
+  $('sc').innerHTML=ix.map(x=>'<option value="'+x.name+'">'+x.title+'</option>').join('');
+  load(ix[0].name);requestAnimationFrame(frame)
+}).catch(()=>{$('blurb').textContent='Could not load traces. Serve this folder over HTTP: python3 -m http.server -d docs'});
+</script>
+</body>
+</html>
